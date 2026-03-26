@@ -4,7 +4,6 @@ import requests
 
 app = Flask(__name__)
 
-# memoria simple (guarda últimos envíos)
 last_sent = {}
 
 COOLDOWN = 36000  # 10 horas
@@ -15,12 +14,11 @@ CHAT_ID = "-1003709795264"
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
-    print("DATA RECIBIDA:", data)  # DEBUG
+    print("DATA:", data)
 
     message = data.get("text", "Mensaje vacío")
     now = time.time()
 
-    # filtro cooldown
     if message in last_sent:
         if now - last_sent[message] < COOLDOWN:
             print("IGNORADO POR COOLDOWN")
@@ -35,9 +33,9 @@ def webhook():
         "text": message
     })
 
-    print("RESPUESTA TELEGRAM:", response.text)  # DEBUG
+    print("TELEGRAM:", response.text)
 
-    return "Sent"
+    return "OK"
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=10000)
