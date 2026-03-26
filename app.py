@@ -9,7 +9,7 @@ last_sent = {}
 
 COOLDOWN = 36000  # 10 horas
 
-BOT_TOKEN = "TU_TOKEN_AQUI"
+BOT_TOKEN = "8773678152:AAFdUZiQJ4RnWeTULUYlWxnyOu1iZ3or9sE"
 CHAT_ID = "-1003709795264"
 
 @app.route('/webhook', methods=['POST'])
