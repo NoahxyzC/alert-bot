@@ -7,34 +7,37 @@ app = Flask(__name__)
 # memoria simple (guarda últimos envíos)
 last_sent = {}
 
-COOLDOWN = 36000  # 10 horas (en segundos)
+COOLDOWN = 36000  # 10 horas
 
-BOT_TOKEN = "8773678152:AAFdUZiQJ4RnWeTULUYlWxnyOu1iZ3or9sE"
+BOT_TOKEN = "TU_TOKEN_AQUI"
 CHAT_ID = "-1003709795264"
-THREAD_ID = 217  # tu topic
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
-    
-    message = data.get("text", "")
+    print("DATA RECIBIDA:", data)  # DEBUG
+
+    message = data.get("text", "Mensaje vacío")
     now = time.time()
 
-    # filtro por mensaje repetido
+    # filtro cooldown
     if message in last_sent:
         if now - last_sent[message] < COOLDOWN:
-            return "Ignored (cooldown activo)"
+            print("IGNORADO POR COOLDOWN")
+            return "Ignored"
 
     last_sent[message] = now
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-    requests.post(url, json={
+    response = requests.post(url, json={
         "chat_id": CHAT_ID,
-        "message_thread_id": THREAD_ID,
         "text": message
     })
 
+    print("RESPUESTA TELEGRAM:", response.text)  # DEBUG
+
     return "Sent"
 
-app.run(host="0.0.0.0", port=10000)
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=10000)
