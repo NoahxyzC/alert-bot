@@ -5,59 +5,64 @@ import re
 
 app = Flask(__name__)
 
-# Diccionario para evitar spam
 last_sent = {}
 COOLDOWN = 36000  # 10 horas
 
-# Configuración de Telegram
 BOT_TOKEN = "8773678152:AAFdUZiQJ4RnWeTULUYlWxnyOu1iZ3or9sE"
 CHAT_ID = "-1003709795264"
 THREAD_ID = 217
 
 def calcular_niveles(mensaje):
-    """
-    Extrae el precio y calcula SL (1.5%) y TP (5%) según el tipo de alerta.
-    """
     try:
-        # Extraer el precio usando expresiones regulares (busca un número decimal después de 'Precio:')
-        match_precio = re.search(r"Precio:\s*([\d.]+)", mensaje)
+        # 1. Extraer Precio (Busca el número después de 'Precio:')
+        match_precio = re.search(r"Precio:\s*([\d.]+)", mensaje, re.IGNORECASE)
         if not match_precio:
-            return mensaje # Si no hay precio, devuelve el original
-
+            return mensaje
+        
         precio_entrada = float(match_precio.group(1))
         
-        # Determinar si es SHORT o LONG
+        # 2. Extraer Activo (Busca el nombre después de 'Activo:')
+        match_activo = re.search(r"Activo:\s*([A-Z0-9/._]+)", mensaje, re.IGNORECASE)
+        activo = match_activo.group(1) if match_activo else "Activo"
+
+        # 3. Determinar Dirección (Short vs Long)
         es_short = "SHORT" in mensaje.upper()
         
         if es_short:
-            # En SHORT: SL arriba (+), TP abajo (-)
             sl_precio = precio_entrada * 1.015
             tp_precio = precio_entrada * 0.95
             tipo = "SHORT 🔴"
         else:
-            # En LONG (por defecto): SL abajo (-), TP arriba (+)
             sl_precio = precio_entrada * 0.985
             tp_precio = precio_entrada * 1.05
             tipo = "LONG 🟢"
 
-        # Extraer el Activo (ej: XRPUSDT)
-        match_activo = re.search(r"Activo:\s*(\w+)", mensaje)
-        activo = match_activo.group(1) if match_activo else "Desconocido"
+        # 4. Capturar mensaje extra (Todo lo que esté después del precio)
+        # Buscamos qué hay después del número del precio
+        posicion_precio = mensaje.find(match_precio.group(1))
+        mensaje_extra = mensaje[posicion_precio + len(match_precio.group(1)):].strip()
+        
+        # Limpiar el mensaje extra de saltos de línea innecesarios
+        mensaje_extra = mensaje_extra.replace("\n", " ").strip()
 
-        # Construir el nuevo mensaje profesional
+        # 5. Construir el mensaje final
         nuevo_mensaje = (
-            f"🚨 **NUEVA ALERTA {tipo}** 🚨\n\n"
-            f"**Activo:** {activo}\n"
-            f"**Precio Entrada:** {precio_entrada:.4f}\n"
+            f"🚨 **ALERTA {tipo}** 🚨\n\n"
+            f"**Instrumento:** `{activo}`\n"
+            f"**Entrada:** `{precio_entrada:.4f}`\n"
             f"---------------------------\n"
-            f"🛑 **STOP LOSS (1.5%):** {sl_precio:.4f}\n"
-            f"✅ **TAKE PROFIT (5%):** {tp_precio:.4f}\n\n"
-            f"⚠️ *Gestiona tu riesgo.*"
+            f"🛑 **SL (1.5%):** `{sl_precio:.4f}`\n"
+            f"✅ **TP (5%):** `{tp_precio:.4f}`\n"
         )
+
+        # Si hay un comentario extra, lo agregamos con un estilo diferente
+        if mensaje_extra and len(mensaje_extra) > 2:
+            nuevo_mensaje += f"---------------------------\n💬 **Nota:** *{mensaje_extra}*"
+
         return nuevo_mensaje
 
     except Exception as e:
-        print(f"Error al calcular: {e}")
+        print(f"Error procesando mensaje: {e}")
         return mensaje
 
 @app.route('/webhook', methods=['POST'])
@@ -69,29 +74,23 @@ def webhook():
         raw_message = data.get("text", "Mensaje vacío")
         now = time.time()
 
-        # Filtro de Spam (Cooldown)
         if raw_message in last_sent:
             if now - last_sent[raw_message] < COOLDOWN:
                 print("IGNORADO POR COOLDOWN")
                 return "Ignored"
 
         last_sent[raw_message] = now
-
-        # Procesar y mejorar el mensaje
         final_message = calcular_niveles(raw_message)
 
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
         payload = {
             "chat_id": CHAT_ID,
             "message_thread_id": THREAD_ID,
             "text": final_message,
-            "parse_mode": "Markdown" # Permite negritas y formato lindo
+            "parse_mode": "Markdown"
         }
 
-        print("ENVIANDO A TELEGRAM:", payload)
-
-        response = requests.post(url, json=payload)
+        requests.post(url, json=payload)
         return "OK"
 
     except Exception as e:
