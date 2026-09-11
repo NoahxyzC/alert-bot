@@ -5,44 +5,47 @@ import re
 
 app = Flask(__name__)
 
-# Control de spam: Tiempo de espera entre alertas del mismo activo (ej: 15 minutos = 900 segundos)
+# Control de spam: 15 minutos (900 segundos) de espera entre la misma alerta para el mismo activo
 last_sent = {}
 COOLDOWN_SEGUNDOS = 900  
 
+# Tus credenciales exactas
 BOT_TOKEN = "8773678152:AAFdUZiQJ4RnWeTULUYlWxnyOu1iZ3or9sE"
 CHAT_ID = "-1003709795264"
 THREAD_ID = 217
 
-def formatear_mensaje_simple(mensaje):
+def formatear_mensaje_terminal(mensaje):
     try:
-        # Extraer Precio
+        # 1. Extraer Precio
         match_precio = re.search(r"Precio:\s*([\d.]+)", mensaje, re.IGNORECASE)
         precio_entrada = match_precio.group(1) if match_precio else "N/A"
         
-        # Extraer Activo
+        # 2. Extraer Activo
         match_activo = re.search(r"Activo:\s*([A-Z0-9/._]+)", mensaje, re.IGNORECASE)
         activo = match_activo.group(1) if match_activo else "Activo"
 
-        # Identificar dirección para manejar el filtro anti-spam (cooldown)
-        es_short = any(kw in mensaje.upper() for kw in ["SHORT", "ALTA", "VIOLETA"])
-        tipo_key = "SHORT" if es_short else "LONG"
-
-        # Extraer el texto descriptivo que envías desde TradingView
-        if match_precio:
-            posicion_precio = mensaje.find(match_precio.group(1))
-            mensaje_extra = mensaje[posicion_precio + len(match_precio.group(1)):].strip()
-            # Limpiamos las barras verticales del JSON
-            mensaje_extra = mensaje_extra.replace("|", "").strip()
+        # 3. Detectar la dirección y asignar colores/títulos Cyber-Terminal
+        mensaje_upper = mensaje.upper()
+        
+        if "SHORT" in mensaje_upper:
+            titulo = "🔴▰▰▰ **SHORT ZONE** ▰▰▰🔴"
+            tipo_key = "SHORT"
+        elif "LONG" in mensaje_upper:
+            titulo = "🟢▰▰▰ **LONG ZONE** ▰▰▰🟢"
+            tipo_key = "LONG"
+        elif "CRUCE" in mensaje_upper or "MEDIA" in mensaje_upper:
+            titulo = "⚪▰▰▰ **REBALANCEO** ▰▰▰⚪"
+            tipo_key = "CRUCE"
         else:
-            mensaje_extra = mensaje
+            titulo = "⚠️▰▰▰ **ZONA DE INTERÉS** ▰▰▰⚠️"
+            tipo_key = "INFO"
 
-        # Construir el mensaje final simplificado
+        # 4. Construir el diseño final
         nuevo_mensaje = (
-            f"🔔 **ALERTA DE ZONA** 🔔\n\n"
-            f"**Par:** `{activo}`\n"
-            f"**Precio:** `{precio_entrada}`\n"
-            f"---------------------------\n"
-            f"📊 {mensaje_extra}"
+            f"⚡ **[ ALERTA DE SISTEMA ]** ⚡\n\n"
+            f"{titulo}\n\n"
+            f"⮞ **TICKER:** `{activo}`\n"
+            f"⮞ **PRICE:** `{precio_entrada}`"
         )
 
         return nuevo_mensaje, activo, tipo_key
@@ -60,9 +63,10 @@ def webhook():
         raw_message = data.get("text", "Mensaje vacío")
         now = time.time()
 
-        final_message, activo, tipo_key = formatear_mensaje_simple(raw_message)
+        # Darle formato al mensaje
+        final_message, activo, tipo_key = formatear_mensaje_terminal(raw_message)
 
-        # Filtro anti-spam: Clave única por activo y dirección (ej: "BTCUSDT_SHORT")
+        # Filtro anti-spam: Clave única (ej: "CYBERUSDT_SHORT")
         alert_key = f"{activo}_{tipo_key}"
 
         if alert_key in last_sent:
@@ -71,8 +75,10 @@ def webhook():
                 print(f"IGNORADO: {alert_key} en cooldown ({int(tiempo_transcurrido)}s de {COOLDOWN_SEGUNDOS}s)")
                 return "Ignored by Cooldown", 200
 
+        # Registrar el envío
         last_sent[alert_key] = now
 
+        # Enviar a Telegram
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {
             "chat_id": CHAT_ID,
@@ -81,7 +87,8 @@ def webhook():
             "parse_mode": "Markdown"
         }
 
-        requests.post(url, json=payload)
+        respuesta = requests.post(url, json=payload)
+        print("RESPUESTA TELEGRAM:", respuesta.text)
         return "OK", 200
 
     except Exception as e:
